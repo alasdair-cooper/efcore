@@ -15,6 +15,176 @@ namespace Microsoft.EntityFrameworkCore.Query;
 
 public class EntityMaterializerSourceTest
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Can_bind_nested_complex_properties_to_constructors(bool nullNested)
+    {
+        using var context = new SomeEntityContext(b =>
+        {
+            b.Entity<ConstructorEntity>().ComplexProperty(e => e.Address, address =>
+            {
+                address.IsRequired();
+                address.UsePropertyAccessMode(PropertyAccessMode.Property);
+                address.Property(a => a.Street);
+                address.ComplexProperty(a => a.Coordinates, coordinates =>
+                {
+                    coordinates.IsRequired(false);
+                    coordinates.UsePropertyAccessMode(PropertyAccessMode.Property);
+                    coordinates.Property(c => c.Latitude);
+                });
+            });
+        });
+
+        var entityType = context.Model.FindEntityType(typeof(ConstructorEntity))!;
+        var address = entityType.FindComplexProperty(nameof(ConstructorEntity.Address))!;
+        Assert.Same(address, entityType.ConstructorBinding!.ParameterBindings.Single().ConsumedProperties.Single());
+        var coordinates = address.ComplexType.FindComplexProperty(nameof(ConstructorAddress.Coordinates))!;
+        Assert.Contains(
+            address.ComplexType.ConstructorBinding!.ParameterBindings,
+            p => p.ConsumedProperties.Single() == coordinates);
+
+        var values = new object?[entityType.GetFlattenedProperties().Count()];
+        values[entityType.FindProperty(nameof(ConstructorEntity.Id))!.GetIndex()] = 77;
+        values[address.ComplexType.FindProperty(nameof(ConstructorAddress.Street))!.GetIndex()] = "Main";
+        values[coordinates.ComplexType.FindProperty(nameof(ConstructorCoordinates.Latitude))!.GetIndex()]
+            = nullNested ? null : 42;
+
+        var entity = (ConstructorEntity)GetMaterializer(
+            new StructuralTypeMaterializerSource(new StructuralTypeMaterializerSourceDependencies([])), entityType)(
+            new MaterializationContext(new ValueBuffer(values), context));
+
+        Assert.Equal(77, entity.Id);
+        Assert.Equal("Main", entity.Address.Street);
+        Assert.Equal(nullNested ? null : 42, entity.Address.Coordinates?.Latitude);
+        Assert.Equal(0, entity.AddressSetterCalls);
+        Assert.Equal(0, entity.Address.CoordinatesSetterCalls);
+
+        var addressInstance = (ConstructorAddress)new StructuralTypeMaterializerSource(
+            new StructuralTypeMaterializerSourceDependencies([])).GetEmptyMaterializer(address.ComplexType)(
+            new MaterializationContext(new ValueBuffer(values), context));
+        Assert.Equal("Main", addressInstance.Street);
+        Assert.Equal(nullNested ? null : 42, addressInstance.Coordinates?.Latitude);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Can_bind_nullable_nested_complex_struct_to_constructor(bool nullNested)
+    {
+        using var context = new SomeEntityContext(b =>
+            b.Entity<ConstructorStructEntity>().ComplexProperty(e => e.Address, address =>
+            {
+                address.Property(a => a.Street);
+                address.ComplexProperty(a => a.Coordinates, coordinates =>
+                {
+                    coordinates.IsRequired(false);
+                    coordinates.Property(c => c.Latitude);
+                });
+            }));
+
+        var entityType = context.Model.FindEntityType(typeof(ConstructorStructEntity))!;
+        var address = entityType.FindComplexProperty(nameof(ConstructorStructEntity.Address))!;
+        var coordinates = address.ComplexType.FindComplexProperty(nameof(ConstructorStructAddress.Coordinates))!;
+        var values = new object?[entityType.GetFlattenedProperties().Count()];
+        values[entityType.FindProperty(nameof(ConstructorStructEntity.Id))!.GetIndex()] = 77;
+        values[address.ComplexType.FindProperty(nameof(ConstructorStructAddress.Street))!.GetIndex()] = "Main";
+        values[coordinates.ComplexType.FindProperty(nameof(ConstructorStructCoordinates.Latitude))!.GetIndex()]
+            = nullNested ? null : 42;
+
+        var entity = (ConstructorStructEntity)GetMaterializer(
+            new StructuralTypeMaterializerSource(new StructuralTypeMaterializerSourceDependencies([])), entityType)(
+            new MaterializationContext(new ValueBuffer(values), context));
+
+        Assert.Equal(77, entity.Id);
+        Assert.Equal("Main", entity.Address.Street);
+        Assert.Equal(nullNested ? null : 42, entity.Address.Coordinates?.Latitude);
+    }
+
+    private class ConstructorStructEntity(ConstructorStructAddress address)
+    {
+        public int Id { get; set; }
+        public ConstructorStructAddress Address { get; } = address;
+    }
+
+    private readonly record struct ConstructorStructAddress(string Street, ConstructorStructCoordinates? Coordinates);
+
+    private readonly record struct ConstructorStructCoordinates(int Latitude);
+
+    [Fact]
+    public void Throws_for_constructor_bound_complex_property_materialized_separately()
+    {
+        using var context = new SomeEntityContext(b =>
+            b.Entity<ConstructorEntity>().ComplexProperty(e => e.Address, address =>
+            {
+                address.IsRequired();
+                address.Property(a => a.Street);
+                address.ComplexProperty(a => a.Coordinates, coordinates =>
+                {
+                    coordinates.IsRequired(false);
+                    coordinates.Property(c => c.Latitude);
+                });
+            }));
+
+        var entityType = context.Model.FindEntityType(typeof(ConstructorEntity))!;
+        Assert.Equal(
+            CoreStrings.ComplexPropertyConstructorBindingNotSupported(nameof(ConstructorEntity), nameof(ConstructorEntity.Address)),
+            Assert.Throws<InvalidOperationException>(() => GetMaterializer(
+                new SeparatelyMaterializedComplexTypeSource(), entityType)).Message);
+    }
+
+    private class SeparatelyMaterializedComplexTypeSource()
+        : StructuralTypeMaterializerSource(new StructuralTypeMaterializerSourceDependencies([]))
+    {
+        protected override bool ReadComplexTypeDirectly(IComplexType complexType)
+            => false;
+    }
+
+    private class ConstructorEntity(ConstructorAddress address)
+    {
+        private ConstructorAddress _address = address;
+
+        public int Id { get; set; }
+
+        public ConstructorAddress Address
+        {
+            get => _address;
+            set
+            {
+                AddressSetterCalls++;
+                _address = value;
+            }
+        }
+
+        [NotMapped]
+        public int AddressSetterCalls { get; private set; }
+    }
+
+    private class ConstructorAddress(string street, ConstructorCoordinates? coordinates)
+    {
+        private ConstructorCoordinates? _coordinates = coordinates;
+
+        public string Street { get; } = street;
+
+        public ConstructorCoordinates? Coordinates
+        {
+            get => _coordinates;
+            set
+            {
+                CoordinatesSetterCalls++;
+                _coordinates = value;
+            }
+        }
+
+        [NotMapped]
+        public int CoordinatesSetterCalls { get; private set; }
+    }
+
+    private class ConstructorCoordinates(int latitude)
+    {
+        public int Latitude { get; } = latitude;
+    }
+
     [Fact]
     public void Throws_for_abstract_types()
     {

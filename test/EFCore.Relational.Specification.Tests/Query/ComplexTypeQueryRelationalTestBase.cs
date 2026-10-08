@@ -71,6 +71,105 @@ public abstract class ComplexTypeQueryRelationalTestBase<TFixture>(TFixture fixt
 
     #region Non-shared test resources
 
+    [Theory, MemberData(nameof(IsAsyncData))]
+    public virtual async Task Nested_complex_constructor_binding(bool async)
+    {
+        var contextFactory = await InitializeNonSharedTest<ComplexConstructorContext>(
+            seed: async context =>
+            {
+                context.Add(new ComplexConstructorContext.ConstructorEntity(
+                    1, new ComplexConstructorContext.Details("One", new ComplexConstructorContext.Location(42))));
+                context.Add(new ComplexConstructorContext.ConstructorEntity(
+                    2, new ComplexConstructorContext.Details("Two", null)));
+                await context.SaveChangesAsync();
+            });
+
+        foreach (var trackingBehavior in new[]
+                 {
+                     QueryTrackingBehavior.TrackAll,
+                     QueryTrackingBehavior.NoTracking,
+                     QueryTrackingBehavior.NoTrackingWithIdentityResolution
+                 })
+        {
+            await using var context = contextFactory.CreateDbContext();
+            context.ChangeTracker.QueryTrackingBehavior = trackingBehavior;
+            var query = context.Set<ComplexConstructorContext.ConstructorEntity>().OrderBy(e => e.Id);
+            var entities = async ? await query.ToListAsync() : query.ToList();
+
+            Assert.Equal("One", entities[0].Details.Name);
+            Assert.Equal(42, entities[0].Details.Location!.Code);
+            Assert.Equal("Two", entities[1].Details.Name);
+            Assert.Null(entities[1].Details.Location);
+            Assert.Equal(trackingBehavior == QueryTrackingBehavior.TrackAll ? 2 : 0, context.ChangeTracker.Entries().Count());
+        }
+
+        await using (var context = contextFactory.CreateDbContext())
+        {
+            var query = context.Set<ComplexConstructorContext.ConstructorEntity>().OrderBy(e => e.Id).Select(e => e.Details);
+            var details = async ? await query.ToListAsync() : query.ToList();
+            Assert.Equal("One", details[0].Name);
+            Assert.Equal(42, details[0].Location!.Code);
+            Assert.Equal("Two", details[1].Name);
+            Assert.Null(details[1].Location);
+        }
+    }
+
+    [Theory, MemberData(nameof(IsAsyncData))]
+    public virtual async Task Json_complex_constructor_binding_is_not_supported(bool async)
+    {
+        var contextFactory = await InitializeNonSharedTest<ComplexConstructorContext>(
+            onModelCreating: modelBuilder =>
+                modelBuilder.Entity<ComplexConstructorContext.ConstructorEntity>().ComplexProperty(e => e.Details).ToJson());
+        await using var context = contextFactory.CreateDbContext();
+
+        var query = context.Set<ComplexConstructorContext.ConstructorEntity>();
+        var exception = async
+            ? await Assert.ThrowsAsync<InvalidOperationException>(() => query.ToListAsync())
+            : Assert.Throws<InvalidOperationException>(() => query.ToList());
+
+        Assert.Equal(
+            CoreStrings.ComplexPropertyConstructorBindingNotSupported(
+                nameof(ComplexConstructorContext.ConstructorEntity), nameof(ComplexConstructorContext.ConstructorEntity.Details)),
+            exception.Message);
+    }
+
+    protected class ComplexConstructorContext(DbContextOptions options) : DbContext(options)
+    {
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+            => modelBuilder.Entity<ConstructorEntity>(entity =>
+            {
+                entity.ToTable("ConstructorEntity");
+                entity.Property(e => e.Id).ValueGeneratedNever();
+                entity.ComplexProperty(e => e.Details, details =>
+                {
+                    details.IsRequired();
+                    details.Property(d => d.Name);
+                    details.ComplexProperty(d => d.Location, location =>
+                    {
+                        location.IsRequired(false);
+                        location.Property(l => l.Code);
+                    });
+                });
+            });
+
+        public class ConstructorEntity(int id, Details details)
+        {
+            public int Id { get; } = id;
+            public Details Details { get; } = details;
+        }
+
+        public class Details(string name, Location? location)
+        {
+            public string Name { get; } = name;
+            public Location? Location { get; } = location;
+        }
+
+        public class Location(int code)
+        {
+            public int Code { get; } = code;
+        }
+    }
+
     #region 37205
 
     [Fact]

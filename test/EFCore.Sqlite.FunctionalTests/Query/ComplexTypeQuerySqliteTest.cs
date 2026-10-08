@@ -15,6 +15,34 @@ public class ComplexTypeQuerySqliteTest : ComplexTypeQueryRelationalTestBase<
         Fixture.TestSqlLoggerFactory.SetTestOutputHelper(testOutputHelper);
     }
 
+    public override async Task Json_complex_constructor_binding_is_not_supported(bool async)
+    {
+        await base.Json_complex_constructor_binding_is_not_supported(async);
+
+        AssertSql();
+    }
+
+    public override async Task Nested_complex_constructor_binding(bool async)
+    {
+        await base.Nested_complex_constructor_binding(async);
+
+        const string entitySql = """
+SELECT "c"."Id", "c"."Details_Name", "c"."Details_Location_Code"
+FROM "ConstructorEntity" AS "c"
+ORDER BY "c"."Id"
+""";
+
+        AssertSql(
+            entitySql,
+            entitySql,
+            entitySql,
+            """
+SELECT "c"."Details_Name", "c"."Details_Location_Code"
+FROM "ConstructorEntity" AS "c"
+ORDER BY "c"."Id"
+""");
+    }
+
     //     public override async Task Filter_on_property_inside_complex_type(bool async)
     //     {
     //         await base.Filter_on_property_inside_complex_type(async);

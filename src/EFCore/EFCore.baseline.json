@@ -3676,6 +3676,9 @@
           "Member": "static string ComplexPropertyChainOnCollection(object? member, object? type);"
         },
         {
+          "Member": "static string ComplexPropertyConstructorBindingNotSupported(object? type, object? property);"
+        },
+        {
           "Member": "static string ComplexPropertyIndexer(object? type, object? property);"
         },
         {

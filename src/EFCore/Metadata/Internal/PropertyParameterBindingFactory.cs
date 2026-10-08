@@ -21,7 +21,7 @@ public class PropertyParameterBindingFactory : IPropertyParameterBindingFactory
         IEntityType entityType,
         Type parameterType,
         string parameterName)
-        => FindParameter(entityType.GetProperties(), parameterType, parameterName);
+        => FindParameter(entityType.GetProperties(), entityType.GetComplexProperties(), parameterType, parameterName);
 
     /// <summary>
     ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
@@ -33,7 +33,7 @@ public class PropertyParameterBindingFactory : IPropertyParameterBindingFactory
         IComplexType complexType,
         Type parameterType,
         string parameterName)
-        => FindParameter(complexType.GetProperties(), parameterType, parameterName);
+        => FindParameter(complexType.GetProperties(), complexType.GetComplexProperties(), parameterType, parameterName);
 
     /// <summary>
     ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
@@ -43,6 +43,7 @@ public class PropertyParameterBindingFactory : IPropertyParameterBindingFactory
     /// </summary>
     private static ParameterBinding? FindParameter(
         IEnumerable<IProperty> properties,
+        IEnumerable<IComplexProperty> complexProperties,
         Type parameterType,
         string parameterName)
     {
@@ -61,6 +62,16 @@ public class PropertyParameterBindingFactory : IPropertyParameterBindingFactory
                 {
                     return new PropertyParameterBinding(property);
                 }
+            }
+        }
+
+        foreach (var property in complexProperties)
+        {
+            if (!property.IsCollection
+                && property.ClrType == parameterType
+                && candidateNames.Contains(property.Name, StringComparer.Ordinal))
+            {
+                return new ComplexPropertyParameterBinding(property);
             }
         }
 
