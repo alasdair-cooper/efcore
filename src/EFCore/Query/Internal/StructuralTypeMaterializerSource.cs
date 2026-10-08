@@ -70,7 +70,10 @@ public class StructuralTypeMaterializerSource : IStructuralTypeMaterializerSourc
         }
 
         var constructorBinding = ModifyBindings(structuralType, structuralType.ConstructorBinding!);
-        var bindingInfo = new ParameterBindingInfo(parameters, materializationContextExpression);
+        var bindingInfo = new ParameterBindingInfo(parameters, materializationContextExpression)
+        {
+            MaterializeComplexProperty = property => CreateComplexPropertyExpression(property, materializationContextExpression)
+        };
         var instanceVariable = Variable(constructorBinding.RuntimeType, entityInstanceName);
         bindingInfo.ServiceInstances.Add(instanceVariable);
 
@@ -173,6 +176,27 @@ public class StructuralTypeMaterializerSource : IStructuralTypeMaterializerSourc
     protected virtual bool ReadComplexTypeDirectly(IComplexType complexType)
         => true;
 
+    private Expression CreateComplexPropertyExpression(
+        IComplexProperty complexProperty,
+        Expression materializationContextExpression)
+    {
+        if (!ReadComplexTypeDirectly(complexProperty.ComplexType))
+        {
+            throw new InvalidOperationException(
+                CoreStrings.ComplexPropertyConstructorBindingNotSupported(
+                    complexProperty.DeclaringType.DisplayName(), complexProperty.Name));
+        }
+
+        return CreateMaterializeExpression(
+            new StructuralTypeMaterializerSourceParameters(
+                complexProperty.ComplexType,
+                "complexType",
+                complexProperty.ClrType,
+                complexProperty.IsNullable,
+                QueryTrackingBehavior: null),
+            materializationContextExpression);
+    }
+
     /// <summary>
     ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
     ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
@@ -206,14 +230,7 @@ public class StructuralTypeMaterializerSource : IStructuralTypeMaterializerSourc
                 => Default(complexProperty.ClrType), // Initialize collections to null, they'll be populated separately
 
             IComplexProperty complexProperty
-                => CreateMaterializeExpression(
-                    new StructuralTypeMaterializerSourceParameters(
-                        complexProperty.ComplexType,
-                        "complexType",
-                        complexProperty.ClrType,
-                        complexProperty.IsNullable,
-                        QueryTrackingBehavior: null),
-                    bindingInfo.MaterializationContextExpression),
+                => CreateComplexPropertyExpression(complexProperty, bindingInfo.MaterializationContextExpression),
 
             _ => throw new UnreachableException()
         };
@@ -656,7 +673,10 @@ public class StructuralTypeMaterializerSource : IStructuralTypeMaterializerSourc
         var materializationContextExpression = Parameter(typeof(MaterializationContext), "mc");
         var bindingInfo = new ParameterBindingInfo(
             new StructuralTypeMaterializerSourceParameters(entityType, "instance", entityType.ClrType, nullable, null),
-            materializationContextExpression);
+            materializationContextExpression)
+        {
+            MaterializeComplexProperty = property => CreateComplexPropertyExpression(property, materializationContextExpression)
+        };
 
         var blockExpressions = new List<Expression>();
         var instanceVariable = Variable(binding.RuntimeType, "instance");

@@ -28,6 +28,81 @@ public class ConstructorBindingConventionTest
 
     private class BlogParameterless : Blog;
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void Prefers_scalar_constructor_over_complex_constructor(bool complexType, bool fewerParameters)
+    {
+        var clrType = fewerParameters ? typeof(ScalarAndComplexFewer) : typeof(ScalarAndComplexTie);
+        var model = new Model();
+        var entityType = model.AddEntityType(typeof(ConstructorOwner), owned: false, ConfigurationSource.Explicit)!;
+        var type = complexType
+            ? (IMutableTypeBase)entityType.AddComplexProperty(
+                nameof(ConstructorOwner.Value), clrType, clrType, collection: false, ConfigurationSource.Explicit)!.ComplexType
+            : model.AddEntityType(clrType, owned: false, ConfigurationSource.Explicit)!;
+        type.AddProperty("Id", typeof(int));
+        type.AddProperty("Title", typeof(string));
+        type.AddComplexProperty("Details", typeof(ConstructorDetails), typeof(ConstructorDetails));
+
+        var factory = InMemoryTestHelpers.Instance.CreateContextServices().GetRequiredService<IConstructorBindingFactory>();
+        InstantiationBinding binding;
+        InstantiationBinding? serviceOnlyBinding;
+        if (complexType)
+        {
+            factory.GetBindings((IReadOnlyComplexType)type, out binding, out serviceOnlyBinding);
+        }
+        else
+        {
+            factory.GetBindings((IReadOnlyEntityType)type, out binding, out serviceOnlyBinding);
+        }
+
+        Assert.All(binding.ParameterBindings, b => Assert.IsType<PropertyParameterBinding>(b));
+        Assert.Equal(fewerParameters ? 2 : 1, binding.ParameterBindings.Count);
+        Assert.Null(serviceOnlyBinding);
+    }
+
+    private class ConstructorOwner
+    {
+        public object Value { get; set; } = null!;
+    }
+
+    private class ConstructorDetails
+    {
+        public int Number { get; set; }
+    }
+
+    private class ScalarAndComplexTie
+    {
+        public ScalarAndComplexTie(int id)
+        {
+        }
+
+        public ScalarAndComplexTie(ConstructorDetails details)
+        {
+        }
+
+        public int Id { get; set; }
+        public string Title { get; set; } = null!;
+        public ConstructorDetails Details { get; set; } = null!;
+    }
+
+    private class ScalarAndComplexFewer
+    {
+        public ScalarAndComplexFewer(ConstructorDetails details)
+        {
+        }
+
+        public ScalarAndComplexFewer(int id, string title)
+        {
+        }
+
+        public int Id { get; set; }
+        public string Title { get; set; } = null!;
+        public ConstructorDetails Details { get; set; } = null!;
+    }
+
     [Fact]
     public void Binds_to_parameterless_constructor_if_no_services()
     {

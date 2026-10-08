@@ -45,6 +45,8 @@ Initialize(model, designTime, validationLogger)
 
 When processing properties in conventions or validation, remember that complex types can contain their own declared properties. Use `GetFlattenedProperties()` to iterate all properties (including on nested non-collection complex types) or manually recurse through `GetDeclaredComplexProperties()` → `complexProperty.ComplexType`.
 
+Constructor bindings consume complex properties as well as scalar and service properties. Remap consumed properties to runtime metadata during model conversion, and use the structural materializer's recursive complex-property path for constructor arguments so nullability and provider-specific materialization stay consistent with member assignment.
+
 ## Adding a New Annotation
 
 1. Add constant to `CoreAnnotationNames` and its `AllNames`

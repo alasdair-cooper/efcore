@@ -68,6 +68,8 @@ public readonly struct ParameterBindingInfo
     /// </summary>
     public List<ParameterExpression> ServiceInstances { get; } = [];
 
+    internal Func<IComplexProperty, Expression>? MaterializeComplexProperty { get; init; }
+
     /// <summary>
     ///     Gets the index into the <see cref="ValueBuffer" /> where the property value can be found.
     /// </summary>

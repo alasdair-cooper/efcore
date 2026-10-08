@@ -456,6 +456,9 @@
   <data name="ConstructorBindingFailed" xml:space="preserve">
     <value>Cannot bind '{failedBinds}' in '{parameters}'</value>
   </data>
+  <data name="ComplexPropertyConstructorBindingNotSupported" xml:space="preserve">
+    <value>The complex property '{type}.{property}' cannot be bound to a constructor parameter because it is materialized separately by the provider. Constructor binding for complex properties mapped to JSON is not supported.</value>
+  </data>
   <data name="ConstructorConflict" xml:space="preserve">
     <value>The constructors '{firstConstructor}' and '{secondConstructor}' have the same number of parameters, and can both be used by Entity Framework. The constructor to be used must be configured in 'OnModelCreating'.</value>
   </data>

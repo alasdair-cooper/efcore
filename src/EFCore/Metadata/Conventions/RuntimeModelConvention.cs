@@ -242,6 +242,7 @@ public class RuntimeModelConvention : IModelFinalizedConvention
         => parameterBinding.With(
             parameterBinding.ConsumedProperties.Select(property =>
                 (entityType.FindProperty(property.Name)
+                    ?? (IPropertyBase?)entityType.FindComplexProperty(property.Name)
                     ?? entityType.FindServiceProperty(property.Name)
                     ?? entityType.FindNavigation(property.Name)
                     ?? (IPropertyBase?)entityType.FindSkipNavigation(property.Name))!).ToArray());

@@ -925,6 +925,14 @@ namespace Microsoft.EntityFrameworkCore.Diagnostics
                 failedBinds, parameters);
 
         /// <summary>
+        ///     The complex property '{type}.{property}' cannot be bound to a constructor parameter because it is materialized separately by the provider. Constructor binding for complex properties mapped to JSON is not supported.
+        /// </summary>
+        public static string ComplexPropertyConstructorBindingNotSupported(object? type, object? property)
+            => string.Format(
+                GetString("ComplexPropertyConstructorBindingNotSupported", nameof(type), nameof(property)),
+                type, property);
+
+        /// <summary>
         ///     The constructors '{firstConstructor}' and '{secondConstructor}' have the same number of parameters, and can both be used by Entity Framework. The constructor to be used must be configured in 'OnModelCreating'.
         /// </summary>
         public static string ConstructorConflict(object? firstConstructor, object? secondConstructor)

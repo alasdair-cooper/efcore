@@ -110,6 +110,7 @@ public class ConstructorBindingFactory : IConstructorBindingFactory
         var maxServiceParams = 0;
         var maxServiceOnlyParams = 0;
         var minPropertyParams = int.MaxValue;
+        var complexBinding = true;
         var foundBindings = new List<InstantiationBinding>();
         var foundServiceOnlyBindings = new List<InstantiationBinding>();
         var bindingFailures = new List<IEnumerable<ParameterInfo>>();
@@ -118,13 +119,14 @@ public class ConstructorBindingFactory : IConstructorBindingFactory
         var constructors = clrType.GetTypeInfo().DeclaredConstructors.Where(c => !c.IsStatic).ToList();
         foreach (var constructor in constructors)
         {
-            // Trying to find the constructor with the most service properties
-            // followed by the least scalar property parameters
+            // Prefer constructors which were bindable without complex properties, then the most service
+            // properties followed by the least property parameters.
             if (TryBindConstructor(
                     type, constructor, bindToProperty, bind, out var binding, out var failures))
             {
                 var serviceParamCount = binding.ParameterBindings.OfType<ServiceParameterBinding>().Count();
                 var propertyParamCount = binding.ParameterBindings.Count - serviceParamCount;
+                var bindsComplexProperty = binding.ParameterBindings.Any(b => b is ComplexPropertyParameterBinding);
 
                 if (propertyParamCount == 0)
                 {
@@ -139,6 +141,19 @@ public class ConstructorBindingFactory : IConstructorBindingFactory
 
                         maxServiceOnlyParams = serviceParamCount;
                     }
+                }
+
+                if (bindsComplexProperty && !complexBinding)
+                {
+                    continue;
+                }
+
+                if (!bindsComplexProperty && complexBinding)
+                {
+                    foundBindings.Clear();
+                    maxServiceParams = 0;
+                    minPropertyParams = int.MaxValue;
+                    complexBinding = false;
                 }
 
                 if (serviceParamCount == maxServiceParams
